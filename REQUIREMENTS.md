@@ -1,4 +1,4 @@
-# Toolblock Governance Plugin Requirements
+# Policy Engine Requirements
 
 ## Goal
 
@@ -16,7 +16,7 @@ Examples:
 - `edit`
 - `apply_patch`
 - mutating `exec`
-- config/deploy/infrastructure mutations
+- config, deploy, and infrastructure mutations
 
 ### R2. Never block read-only inspection by default
 
@@ -34,18 +34,18 @@ Examples:
 Before deciding, the system must classify:
 
 - target class
-- environment (`test` or `production`)
+- environment
 - risk level
 
 ### R4. Use policy as data
 
-Rules must live in YAML, not be hard-coded as workspace-specific behavior.
+Rules must live in YAML, not be hard-coded as Mauro-specific prompt behavior.
 
 ### R5. Require evidence before guarded mutation
 
 If a guarded mutation is attempted without compatible recorded evidence, the system must require human approval.
 
-This must remain true even when the `preflight_claim` is complete.
+This remains true even when the `preflight_claim` is otherwise complete.
 
 ### R6. Preserve hard blocks
 
@@ -53,7 +53,7 @@ Destructive production actions without rollback must remain blocked.
 
 ### R7. Support explicit evidence registration
 
-The runtime-exposed workflow must support:
+The runtime-exposed workaround flow must support:
 
 1. read/search
 2. `preflight.record_evidence`
@@ -73,7 +73,7 @@ The system must not claim native causal proof if the runtime does not provide it
 Current honest scope:
 
 - verifies synchronous recorded evidence
-- does not prove native causal telemetry of prior reads/searches
+- does not prove native causal telemetry of prior reads and searches
 
 ## Acceptance criteria
 
@@ -87,7 +87,7 @@ A guarded mutation without recorded evidence requires approval.
 
 ### AC3
 
-A destructive production action without rollback is blocked or escalated according to policy, with hard-block preserved where required.
+A destructive production action without rollback is blocked or escalated according to policy, with the hard block preserved where required.
 
 ### AC4
 
@@ -101,15 +101,14 @@ Read-only `exec` remains bypassed.
 
 The file tested must be the same file the runtime would load.
 
-## Out of scope for the current workaround
+## Out of scope for this version
 
 - native runtime causal evidence verification
-- production rollout
 - upstream OpenClaw core integration
-- pretending that `after_tool_call` telemetry is already reliable for this purpose
+- pretending that `after_tool_call` telemetry is already trustworthy for this use case
 
-## Required developer discipline
+## Required discipline
 
-- do not modify production config during test work
 - keep docs aligned with the runtime entrypoint actually loaded
-- treat spec, code, tests, and packaging as one contract
+- keep tests aligned with the same runtime file
+- do not blur the line between workaround and native runtime evidence
