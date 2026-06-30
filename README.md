@@ -1,6 +1,6 @@
 # Policy Engine for OpenClaw
 
-Version: `0.2.1`
+Version: `0.2.2`
 
 This repository is the source of truth for the current Policy Engine workaround that was validated in the EC2 test bundle and prepared for rollout into Mauro's OpenClaw setup.
 
@@ -43,6 +43,14 @@ The plugin exposes:
 - `preflight.record_evidence`
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+
+For Mauro's production rollout, the plugin can now be scoped to specific agents with plugin config:
+
+```json
+{
+  "onlyAgents": ["main"]
+}
+```
 
 ## Canonical workflow
 
