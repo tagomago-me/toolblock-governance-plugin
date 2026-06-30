@@ -66,6 +66,10 @@ The runtime bundle must expose:
 - `policy_engine.status`
 - `policy_engine.evidence_list`
 
+### R8b. Support scoped activation by agent id
+
+The plugin must support limiting enforcement to specific agent ids so production rollout can target `main` without changing behavior for every other agent.
+
 ### R9. Keep implementation honest
 
 The system must not claim native causal proof if the runtime does not provide it.
