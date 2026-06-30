@@ -1,0 +1,56 @@
+version: 0.1.0
+mode: require_approval_when_evidence_missing
+human_override: true
+agent_override: false
+
+guarded_tools:
+  file_write_edit_delete:
+    match:
+      tools:
+        - write
+        - write_file
+        - edit
+        - edit_file
+        - delete
+        - delete_file
+        - filesystem.write
+        - filesystem.edit
+        - filesystem.delete
+  shell_execution:
+    match:
+      tools:
+        - exec
+        - shell
+        - bash
+        - run_command
+  plane_changes:
+    match:
+      tools:
+        - plane
+        - update_issue
+        - close_issue
+  aws_deploy_config:
+    match:
+      tools:
+        - aws
+        - deploy
+        - terraform
+        - kubectl
+        - docker
+        - config_update
+
+pre_action_claim:
+  required_fields:
+    - skill_used
+    - source_route
+    - plane_ticket
+    - evidence_ref
+    - action_type
+    - risk
+    - rollback
+
+root_cause_rules:
+  - "Search before asking the user, when information may exist in Plane, repo, vault, logs, docs, or tickets."
+  - "Diagnose before fixing."
+  - "Never label workaround as solution."
+  - "Do not suggest abandoning, freezing, leaving as-is, or accepting imperfection when the user is investigating root cause, unless explicitly asked for strategic options."
