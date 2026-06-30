@@ -23,10 +23,14 @@ function test(name, fn) {
 
 test("registers before_tool_call hook", () => {
   const hooks = [];
+  const tools = [];
   plugin.register({
     pluginConfig: {},
     registerHook(name, handler, options) {
       hooks.push({ name, handler, options });
+    },
+    registerTool(tool) {
+      tools.push(tool);
     },
     registerGatewayMethod() {},
     registerReload() {},
@@ -35,20 +39,27 @@ test("registers before_tool_call hook", () => {
   assert.equal(hooks.length, 1);
   assert.equal(hooks[0].name, "before_tool_call");
   assert.equal(hooks[0].options.priority, 150);
+  assert.equal(tools.length, 1);
+  assert.equal(tools[0].name, "preflight_record_evidence");
 });
 
 
 test("registers gateway methods and records evidence through runtime entrypoint", async () => {
   const gatewayMethods = new Map();
+  const tools = [];
   plugin.register({
     pluginConfig: {},
     registerHook() {},
+    registerTool(tool) {
+      tools.push(tool);
+    },
     registerGatewayMethod(name, handler) {
       gatewayMethods.set(name, handler);
     },
     registerReload() {},
   });
 
+  assert.ok(tools.some((tool) => tool.name === "preflight_record_evidence"));
   assert.ok(gatewayMethods.has("preflight.record_evidence"));
   assert.ok(gatewayMethods.has("policy_engine.status"));
   assert.ok(gatewayMethods.has("policy_engine.evidence_list"));
@@ -72,6 +83,7 @@ test("registers gateway methods and records evidence through runtime entrypoint"
   assert.equal(recordResponse.ok, true);
   assert.equal(recordResponse.payload.recorded, true);
   assert.equal(recordResponse.payload.runId, "gateway-method-run");
+  assert.equal(recordResponse.payload.sessionId, "gateway-session");
   assert.ok(recordResponse.payload.evidenceId);
 
   let listResponse;
@@ -94,8 +106,53 @@ test("registers gateway methods and records evidence through runtime entrypoint"
   });
 
   assert.equal(statusResponse.ok, true);
-  assert.equal(statusResponse.payload.version, "0.2.2");
+  assert.equal(statusResponse.payload.version, "0.2.3");
+  assert.equal(statusResponse.payload.evidenceTool, "preflight_record_evidence");
+  assert.equal(statusResponse.payload.evidenceGatewayMethod, "preflight.record_evidence");
   assert.equal(statusResponse.payload.runtimeEntrypoint, "index.mjs");
+});
+
+test("preflight_record_evidence tool records ledger evidence with session fallback", async () => {
+  let recordTool;
+  plugin.register({
+    pluginConfig: {},
+    registerHook() {},
+    registerTool(tool) {
+      if (tool.name === "preflight_record_evidence") {
+        recordTool = tool;
+      }
+    },
+    registerGatewayMethod() {},
+    registerReload() {},
+  });
+
+  assert.ok(recordTool);
+
+  const result = await recordTool.execute(
+    "tool-call-1",
+    recordTool.prepareArguments({
+      source_type: "read",
+      source_ref: "file:/tmp/source.md",
+      query_or_path: "/tmp/target.md",
+      summary: "Reviewed source",
+      supports_claim: "Target follows source",
+    }),
+    undefined,
+    undefined,
+    {
+      sessionManager: {
+        getSessionId() {
+          return "tool-session-id";
+        },
+      },
+    },
+  );
+
+  assert.equal(result.details.recorded, true);
+  assert.equal(result.details.sessionId, "tool-session-id");
+
+  const records = getEvidenceLedger().findRecords({ sessionId: "tool-session-id" }).records;
+  assert.ok(records.some((record) => record.sourceRef === "file:/tmp/source.md"));
 });
 
 test("resolveConfig defaults mode to enforce", () => {
@@ -209,6 +266,54 @@ test("write without evidence requires approval", () => {
   assert.equal(result.decision, "require_approval");
   assert.equal(result.reason, "missing_recorded_evidence");
   assert.equal(result.metadata.hasRecordedEvidence, false);
+});
+
+test("session fallback evidence passes when hook context has matching session id", () => {
+  const ledger = getEvidenceLedger();
+  const sessionId = `session-fallback-${Date.now()}`;
+
+  ledger.record({
+    id: "",
+    timestamp: new Date().toISOString(),
+    runId: "unknown",
+    sessionId,
+    sessionKey: "agent:main:main",
+    sourceType: "read",
+    sourceRef: "file:/tmp/source.md",
+    queryOrPath: "/tmp/output.md",
+    summary: "Reviewed source for target",
+    supportsClaim: "Target matches source",
+  });
+
+  const result = evaluatePolicy(
+    {
+      toolName: "write",
+      runId: `real-run-${Date.now()}`,
+      params: {
+        path: "/tmp/output.md",
+        content: "# hi",
+        preflight_claim: {
+          target_file: "/tmp/output.md",
+          user_request: "Update output",
+          skill_used: "test-skill",
+          source_route: "internal",
+          plane_ticket: "TEST-SESSION-FALLBACK",
+          evidence_ref: ["file:/tmp/source.md"],
+          action_type: "write",
+          risk: "low",
+          rollback: "delete /tmp/output.md",
+          impact_note: "tmp validation",
+        },
+      },
+      derivedPaths: ["/tmp/output.md"],
+    },
+    policies,
+    { agentId: "main", sessionId, sessionKey: "agent:main:main" },
+  );
+
+  assert.equal(result.decision, "pass");
+  assert.equal(result.metadata.evidenceLookupScope, "sessionId");
+  assert.equal(result.metadata.hasRecordedEvidence, true);
 });
 
 test("guarded write with complete claim and empty ledger requires approval", () => {
