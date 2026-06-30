@@ -100,6 +100,7 @@ In practice that means:
 - `index.mjs` is the runtime source file
 - the runtime methods in docs are actually exposed
 - the missing-ledger bypass is fixed
+- agent scoping is available through `onlyAgents`
 - only the canonical validated tests are carried forward
 
 ## Known limitation
