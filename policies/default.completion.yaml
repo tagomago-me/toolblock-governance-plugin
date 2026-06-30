@@ -1,0 +1,22 @@
+version: 0.1.0
+purpose: "Require resolution memory/documentation before closing or marking Plane work as done."
+
+applies_to:
+  tools:
+    - plane
+  operations:
+    - close_issue
+    - move_to_done
+    - update_status_done
+
+requires:
+  - resolution_summary
+  - root_cause
+  - evidence_consulted
+  - files_or_configs_changed
+  - validation_performed
+  - rollback_or_recovery_path
+  - memory_or_documentation_updated
+
+default_decision:
+  missing_required_field: require_approval
