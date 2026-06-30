@@ -1,6 +1,6 @@
 {
   "name": "openclaw-plugin-policy-engine",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "type": "module",
   "main": "index.mjs",
   "scripts": {
@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "openclaw": "file:/home/ubuntu/.openclaw/npm/node_modules/openclaw",
+    "typebox": "^1.1.38",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
