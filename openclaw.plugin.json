@@ -1,7 +1,7 @@
 {
   "id": "policy-engine",
   "name": "Policy Engine",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "OpenClaw plugin that routes guarded actions through risk, evidence, placement, lifecycle, and completion policies before execution.",
   "main": "index.mjs",
   "type": "module",
@@ -41,6 +41,13 @@
       "policiesDir": {
         "type": "string",
         "description": "Optional override for the policy YAML directory."
+      },
+      "onlyAgents": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Optional list of agent ids that the plugin should actively govern. Empty means all agents."
       },
       "auditLogPath": {
         "type": "string",
