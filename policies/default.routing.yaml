@@ -1,0 +1,30 @@
+version: 0.1.0
+
+routes:
+  action:
+    first:
+      - skills
+
+  file:
+    order:
+      - udl_index
+      - mirror
+      - file_tree
+      - google_drive
+
+  information:
+    order:
+      - knowledge_map
+      - rag_files
+
+  system_or_openclaw:
+    order:
+      - internal_openclaw_docs
+      - plane_tickets_relevant_workspace
+      - external_internet_if_internal_fails_or_stale
+
+  previous_problem:
+    order:
+      - plane_tickets_relevant_workspace
+      - lcm_sqlite
+      - rag_files
