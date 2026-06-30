@@ -1,97 +1,97 @@
-# Toolblock Governance Plugin
+# Policy Engine for OpenClaw
 
-This repository documents the current Toolblock Governance Plugin / Policy Engine work for OpenClaw.
+Version: `0.2.1`
 
-Its purpose is to make the project understandable as a system, not just as a conversation or a temporary plugin bundle.
+This repository is the source of truth for the current Policy Engine workaround that was validated in the EC2 test bundle and prepared for rollout into Mauro's OpenClaw setup.
 
-## What this project is
-
-This project is a runtime governance layer for OpenClaw.
-
-It exists to move governance out of:
-
-- prompts
-- implicit agent behavior
-- `AGENTS.md`-only rules
-
-and into runtime policy that executes before guarded tool calls.
+The goal of the plugin is to move governance out of prompts and `AGENTS.md` into runtime policy.
 
 ## What it does
 
-At the current test-bundle stage, the Policy Engine can:
+The plugin guards state-changing operations before execution.
 
-- intercept guarded state-changing tool calls
-- classify target and environment
-- evaluate YAML-based policy rules
-- require human approval when evidence is missing
-- hard-block destructive production actions without rollback
-- allow read-only inspection flows to stay cheap
+Current validated behavior:
 
-## Current operational workflow
+- intercepts guarded mutations through `before_tool_call`
+- classifies target, environment, and risk
+- loads policy from YAML
+- requires human approval when recorded evidence is missing
+- blocks destructive production actions without rollback
+- keeps read-only inspection cheap
 
-1. Read or search for the needed source.
-2. Record evidence with `preflight.record_evidence`.
+## Current honest scope
+
+This is a workaround with synchronous recorded evidence.
+
+It does prove:
+
+- evidence was explicitly recorded for the run
+- the recorded evidence is compatible with the guarded mutation claim
+
+It does not prove:
+
+- that the read or search definitely happened through native runtime telemetry immediately before the mutation
+
+That larger capability still needs upstream runtime support.
+
+## Runtime methods
+
+The canonical runtime entrypoint is `index.mjs`.
+
+The plugin exposes:
+
+- `preflight.record_evidence`
+- `policy_engine.status`
+- `policy_engine.evidence_list`
+
+## Canonical workflow
+
+1. Read/search the source you need.
+2. Call `preflight.record_evidence`.
 3. Execute the guarded mutation with a compatible `preflight_claim`.
-4. Let the plugin decide:
+4. Let the plugin return one of:
    - `pass`
-   - `requireApproval`
+   - `require_approval`
    - `block`
 
-## Named parts
-
-The system is easier to understand if we give stable names to the main pieces:
-
-- `Runtime Guard`: the `before_tool_call` interception layer
-- `Evidence Recorder`: the `preflight.record_evidence` gateway method
-- `Evidence Ledger`: the local synchronous ledger stored in JSONL
-- `Policy Evaluator`: the decision logic that returns `pass`, `require_approval`, or `block`
-- `Policy Bundle`: the YAML files under `policies/`
-- `Status Surface`: `policy_engine.status`
-- `Evidence Inspector`: `policy_engine.evidence_list`
-
-See [docs/PARTS.md](docs/PARTS.md) for the detailed part map.
-
-## Repository documents
-
-- [REQUIREMENTS.md](REQUIREMENTS.md): what the system must do
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md): how it is built, tested, and extended
-- [docs/PARTS.md](docs/PARTS.md): names and responsibilities of each part
-
-## Honest current status
-
-- The test bundle is aligned around the canonical runtime entrypoint `index.mjs`.
-- The runtime bundle exposes:
-  - `preflight.record_evidence`
-  - `policy_engine.status`
-  - `policy_engine.evidence_list`
-- The workaround is implemented in test.
-- It is not yet loaded into the active `main` agent config.
-- Native causal evidence verification is still not available upstream.
-
-## Canonical reference locations
-
-Main spec on EC2:
-
-- `/home/ubuntu/.openclaw/plane/os/infraestrutura/tool-block-governance-plugin/policy-engine-objetivo-e-spec-de-implementacao.md`
-
-Usage guide on EC2:
-
-- `/home/ubuntu/.openclaw/plane/os/infraestrutura/tool-block-governance-plugin/policy-engine-como-usar-no-openclaw.md`
-
-Current test bundle on EC2:
-
-- `/tmp/openclaw-plugin-policy-engine-EzP9mC/openclaw-plugin-policy-engine`
-
-## Suggested implementation shape
+## Repository layout
 
 ```text
-toolblock-governance-plugin/
-  README.md
-  REQUIREMENTS.md
-  docs/
-    DEVELOPMENT.md
-    PARTS.md
-  src/
-  tests/
-  policies/
+.
+├── index.mjs
+├── openclaw.plugin.json
+├── package.json
+├── policies/
+├── tests/
+├── REQUIREMENTS.md
+└── docs/
 ```
+
+## Important docs
+
+- [REQUIREMENTS.md](REQUIREMENTS.md)
+- [Development Guide](docs/DEVELOPMENT.md)
+- [Parts Map](docs/PARTS.md)
+- [Usage](docs/USAGE.md)
+- [Objective and Implementation Spec](docs/OBJECTIVE-AND-IMPLEMENTATION-SPEC.md)
+- [EC2 Test Validation](docs/VALIDATION-EC2-TEST.md)
+- [Evidence Ledger Workaround](docs/EVIDENCE-LEDGER-WORKAROUND.md)
+- [Deployment Context](docs/DEPLOYMENT-CONTEXT.md)
+
+## Tests carried into source of truth
+
+The canonical validated tests in this repository are:
+
+- `tests/run-tests.mjs`
+- `tests/acceptance-tests.mjs`
+- `tests/bypass-regression.mjs`
+
+The `npm test` script runs all three.
+
+## Host-coupled note
+
+The current `package.json` keeps the tested OpenClaw dependency path used on the EC2 test host:
+
+`/home/ubuntu/.openclaw/npm/node_modules/openclaw`
+
+That is intentional for this source-of-truth snapshot because it mirrors the working test bundle that was validated on Mauro's OpenClaw EC2 environment.
