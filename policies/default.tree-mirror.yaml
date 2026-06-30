@@ -1,0 +1,29 @@
+version: 0.1.0
+purpose: "Keep Plane, Overleaf, and filesystem trees structurally synchronized."
+
+mirrors:
+  plane:
+    source: plane_hierarchy
+    target: filesystem
+  overleaf:
+    source: overleaf_project_tree
+    target: filesystem
+
+requires:
+  - source_tree_ref
+  - target_root
+  - mapping_rule
+  - conflict_check
+  - dry_run_diff
+  - rollback_plan
+
+default_decision:
+  create_missing_folders: require_approval
+  rename_folders: require_approval
+  delete_extra_folders: require_approval
+  destructive_delete: block_unless_human_override
+
+rules:
+  - "The agent must not invent folder structure."
+  - "Tree changes require a dry-run diff before writes."
+  - "Delete operations prefer archive/move-to-trash before permanent deletion."
