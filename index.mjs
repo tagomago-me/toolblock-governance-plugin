@@ -120,6 +120,9 @@ function resolveConfig(raw) {
   return {
     enabled: cfg.enabled !== false,
     mode,
+    onlyAgents: Array.isArray(cfg.onlyAgents)
+      ? cfg.onlyAgents.filter((value) => typeof value === "string" && value.trim()).map((value) => value.trim())
+      : [],
     approvalTimeoutMs:
       typeof cfg.approvalTimeoutMs === "number" && Number.isFinite(cfg.approvalTimeoutMs)
         ? Math.max(1_000, Math.floor(cfg.approvalTimeoutMs))
@@ -573,6 +576,12 @@ export default definePluginEntry({
         pluginConfig = resolveConfig(api.pluginConfig);
         policies = loadPolicies(pluginConfig.policiesDir);
         if (!pluginConfig.enabled || pluginConfig.mode === "disabled") return {};
+        if (
+          pluginConfig.onlyAgents.length > 0 &&
+          !pluginConfig.onlyAgents.includes(String(ctx?.agentId ?? ""))
+        ) {
+          return {};
+        }
 
         const result = evaluatePolicy(event, policies);
         appendAudit(pluginConfig.auditLogPath, event, {
@@ -669,9 +678,10 @@ export default definePluginEntry({
       respond(true, {
         ok: true,
         plugin: "policy-engine",
-        version: "0.2.1",
+        version: "0.2.2",
         mode: pluginConfig.mode,
         enabled: pluginConfig.enabled,
+        onlyAgents: pluginConfig.onlyAgents,
         ledger: "active",
         runtimeEntrypoint: "index.mjs",
       });
