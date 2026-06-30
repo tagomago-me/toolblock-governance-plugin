@@ -1,7 +1,7 @@
 {
   "id": "policy-engine",
   "name": "Policy Engine",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "OpenClaw plugin that routes guarded actions through risk, evidence, placement, lifecycle, and completion policies before execution.",
   "main": "index.mjs",
   "type": "module",
