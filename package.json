@@ -1,0 +1,20 @@
+{
+  "name": "openclaw-plugin-policy-engine",
+  "version": "0.2.1",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "node tests/run-tests.mjs && node tests/acceptance-tests.mjs && node tests/bypass-regression.mjs",
+    "test:runtime": "node tests/run-tests.mjs",
+    "test:acceptance": "node tests/acceptance-tests.mjs",
+    "test:regression": "node tests/bypass-regression.mjs"
+  },
+  "dependencies": {
+    "openclaw": "file:/home/ubuntu/.openclaw/npm/node_modules/openclaw",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "typescript": "^6.0.3"
+  }
+}
