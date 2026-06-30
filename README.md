@@ -1,6 +1,6 @@
 # Policy Engine for OpenClaw
 
-Version: `0.2.3`
+Version: `0.2.4`
 
 This repository is the source of truth for the current Policy Engine workaround that was validated in the EC2 test bundle and prepared for rollout into Mauro's OpenClaw setup.
 
@@ -27,6 +27,7 @@ It does prove:
 
 - evidence was explicitly recorded for the run
 - the recorded evidence is compatible with the guarded mutation claim
+- when OpenClaw does not provide a stable run/session identity to both plugin tools, recorded evidence can be matched by the governed mutation target path
 
 It does not prove:
 
@@ -41,7 +42,9 @@ The canonical runtime entrypoint is `index.mjs`.
 The plugin exposes:
 
 - `preflight_record_evidence` (agent tool)
+- `policy_write_file` (agent tool)
 - `preflight.record_evidence`
+- `policy_engine.write_file`
 - `policy_engine.status`
 - `policy_engine.evidence_list`
 
@@ -63,7 +66,7 @@ For Mauro's production rollout, the plugin can now be scoped to specific agents 
 1. Read/search the source you need.
 2. Record it with `preflight_record_evidence`.
 3. If you are operating through the Gateway instead of an agent tool loop, call `preflight.record_evidence`.
-4. Execute the guarded mutation with a compatible `preflight_claim`.
+4. Execute the guarded mutation through a plugin-owned governed tool such as `policy_write_file`.
 5. Let the plugin return one of:
    - `pass`
    - `require_approval`
@@ -116,7 +119,7 @@ That is intentional for this source-of-truth snapshot because it mirrors the wor
 
 On `biob-os`, the plugin is loaded in the OpenClaw gateway and reports:
 
-- version `0.2.3`
+- version `0.2.4`
 - `mode: "enforce"`
 - `onlyAgents: ["main"]`
 - gateway method `preflight.record_evidence`
@@ -134,7 +137,7 @@ After adding:
 ```json
 {
   "contracts": {
-    "tools": ["preflight_record_evidence"]
+    "tools": ["preflight_record_evidence", "policy_write_file"]
   }
 }
 ```
@@ -144,5 +147,7 @@ the hosted `main` agent successfully:
 1. read the plugin README
 2. called `preflight_record_evidence`
 3. completed the guarded write flow
+
+Version `0.2.4` adds `policy_write_file`, a plugin-owned file mutation tool. This is the supported operational surface for governed writes because it performs the policy decision inside the tool before it mutates the filesystem.
 
 See [Production Validation on biob-os](docs/PRODUCTION-VALIDATION-BIOB-OS.md) for the exact validation snapshot.

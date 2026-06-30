@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { Type } from "typebox";
 import YAML from "yaml";
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 
@@ -9,9 +10,39 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_POLICY_DIR = path.join(__dirname, "policies");
 const DEFAULT_AUDIT_LOG = path.join(__dirname, "logs", "policy-engine.jsonl");
 const DEFAULT_EVIDENCE_LEDGER = path.join(__dirname, "logs", "evidence-ledger.jsonl");
+const RECORD_EVIDENCE_GATEWAY_METHOD = "preflight.record_evidence";
+const RECORD_EVIDENCE_TOOL_NAME = "preflight_record_evidence";
+const POLICY_WRITE_FILE_TOOL_NAME = "policy_write_file";
+const POLICY_WRITE_FILE_GATEWAY_METHOD = "policy_engine.write_file";
 
-const DIRECT_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch"]);
+const DIRECT_MUTATION_TOOLS = new Set(["write", "edit", "apply_patch", POLICY_WRITE_FILE_TOOL_NAME]);
 const EXEC_TOOLS = new Set(["bash", "exec", "exec_command", "shell"]);
+
+const RECORD_EVIDENCE_TOOL_SCHEMA = Type.Object(
+  {
+    source_type: Type.String({ minLength: 1 }),
+    source_ref: Type.String({ minLength: 1 }),
+    query_or_path: Type.Optional(Type.String()),
+    summary: Type.String({ minLength: 1 }),
+    supports_claim: Type.String({ minLength: 1 }),
+    run_id: Type.Optional(Type.String()),
+    session_id: Type.Optional(Type.String()),
+    session_key: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+const POLICY_WRITE_FILE_TOOL_SCHEMA = Type.Object(
+  {
+    path: Type.String({ minLength: 1 }),
+    content: Type.String(),
+    preflight_claim: Type.Optional(Type.Any()),
+    run_id: Type.Optional(Type.String()),
+    session_id: Type.Optional(Type.String()),
+    session_key: Type.Optional(Type.String()),
+  },
+  { additionalProperties: false },
+);
 
 const WRITE_COMMAND_PATTERNS = [
   /\brm\b/,
@@ -74,7 +105,9 @@ class EvidenceLedger {
   record(evidence) {
     const record = {
       ...evidence,
-      id: evidence?.id || `${evidence?.runId ?? "unknown"}:${evidence?.sourceRef ?? "unknown"}:${Date.now()}`,
+      id:
+        evidence?.id ||
+        `${evidence?.runId ?? evidence?.sessionId ?? evidence?.sessionKey ?? "unknown"}:${evidence?.sourceRef ?? "unknown"}:${Date.now()}`,
     };
     this.records.set(record.id, record);
     this.dirty = true;
@@ -96,6 +129,64 @@ class EvidenceLedger {
 
   getRecordsForRun(runId) {
     return Array.from(this.records.values()).filter((record) => record.runId === runId);
+  }
+
+  getRecordsForSessionId(sessionId) {
+    return Array.from(this.records.values()).filter((record) => record.sessionId === sessionId);
+  }
+
+  getRecordsForSessionKey(sessionKey) {
+    return Array.from(this.records.values()).filter((record) => record.sessionKey === sessionKey);
+  }
+
+  getRecordsForTargetPath(targetPath) {
+    return Array.from(this.records.values()).filter((record) => matchesEvidenceTarget(record, targetPath));
+  }
+
+  findRecords({ runId, sessionId, sessionKey } = {}) {
+    const lookups = [
+      { scope: "runId", key: normalizeLookupValue(runId), getter: (key) => this.getRecordsForRun(key) },
+      { scope: "sessionId", key: normalizeLookupValue(sessionId), getter: (key) => this.getRecordsForSessionId(key) },
+      { scope: "sessionKey", key: normalizeLookupValue(sessionKey), getter: (key) => this.getRecordsForSessionKey(key) },
+    ];
+
+    for (const lookup of lookups) {
+      if (!lookup.key) continue;
+      const records = lookup.getter(lookup.key);
+      if (records.length) {
+        return {
+          scope: lookup.scope,
+          key: lookup.key,
+          records,
+        };
+      }
+    }
+
+    const fallback = lookups.find((lookup) => lookup.key);
+    return {
+      scope: fallback?.scope ?? "none",
+      key: fallback?.key ?? null,
+      records: [],
+    };
+  }
+
+  findRecordsForTargetPaths(targetPaths = []) {
+    for (const targetPath of targetPaths) {
+      const records = this.getRecordsForTargetPath(targetPath);
+      if (records.length) {
+        return {
+          scope: "targetPath",
+          key: targetPath,
+          records,
+        };
+      }
+    }
+
+    return {
+      scope: "targetPath",
+      key: targetPaths[0] ?? null,
+      records: [],
+    };
   }
 }
 
@@ -160,6 +251,14 @@ function lower(value) {
   return String(value ?? "").toLowerCase();
 }
 
+function normalizeLookupValue(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizeOptionalText(value, fallback = "") {
+  return normalizeLookupValue(value) ?? fallback;
+}
+
 function getCommandText(params) {
   if (!params || typeof params !== "object") return "";
   for (const key of ["cmd", "command", "script", "input"]) {
@@ -188,6 +287,32 @@ function extractTargetPaths(event) {
   }
   for (const candidate of event.derivedPaths ?? []) add(candidate);
   return out;
+}
+
+function normalizeEvidencePayload(rawPayload, fallback = {}) {
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  return {
+    id: "",
+    timestamp: new Date().toISOString(),
+    runId: normalizeOptionalText(payload.run_id ?? payload.runId, normalizeOptionalText(fallback.runId, "unknown")),
+    sessionId: normalizeOptionalText(
+      payload.session_id ?? payload.sessionId,
+      normalizeOptionalText(fallback.sessionId, "unknown"),
+    ),
+    sessionKey: normalizeOptionalText(
+      payload.session_key ?? payload.sessionKey,
+      normalizeOptionalText(fallback.sessionKey, "unknown"),
+    ),
+    sourceType: normalizeOptionalText(payload.source_type ?? payload.sourceType, "unknown"),
+    sourceRef: normalizeOptionalText(payload.source_ref ?? payload.sourceRef, "unknown"),
+    queryOrPath: normalizeOptionalText(payload.query_or_path ?? payload.queryOrPath, ""),
+    summary: normalizeOptionalText(payload.summary, ""),
+    supportsClaim: normalizeOptionalText(payload.supports_claim ?? payload.supportsClaim, ""),
+  };
+}
+
+function recordEvidencePayload(rawPayload, fallback = {}) {
+  return getEvidenceLedger().record(normalizeEvidencePayload(rawPayload, fallback));
 }
 
 function matchesAny(text, patterns) {
@@ -357,11 +482,26 @@ function evidenceRefMatchesRecord(ref, record) {
   });
 }
 
-function evaluateEvidenceCompatibility(event) {
+function evaluateEvidenceCompatibility(event, hookContext) {
   const claim = getClaim(event.params);
   const targetPaths = extractTargetPaths(event);
-  const runId = event.runId ?? "unknown";
-  const records = getEvidenceLedger().getRecordsForRun(runId);
+  const ledger = getEvidenceLedger();
+  const identity = {
+    runId: normalizeLookupValue(event.runId ?? hookContext?.runId),
+    sessionId: normalizeLookupValue(hookContext?.sessionId),
+    sessionKey: normalizeLookupValue(hookContext?.sessionKey),
+  };
+  const identityLookup = ledger.findRecords({
+    runId: identity.runId,
+    sessionId: identity.sessionId,
+    sessionKey: identity.sessionKey,
+  });
+  const canUseTargetFallback = !identity.runId && !identity.sessionId && !identity.sessionKey;
+  const lookup =
+    identityLookup.records.length || !canUseTargetFallback
+      ? identityLookup
+      : ledger.findRecordsForTargetPaths(targetPaths);
+  const records = lookup.records;
   const claimEvidenceRefs = [
     ...asStringList(claim.evidence_refs),
     ...asStringList(claim.evidence_ref),
@@ -372,6 +512,8 @@ function evaluateEvidenceCompatibility(event) {
       hasRecordedEvidence: false,
       compatible: false,
       records,
+      lookupScope: lookup.scope,
+      lookupKey: lookup.key,
       compatibilityMismatches: ["missing_recorded_evidence"],
     };
   }
@@ -401,6 +543,8 @@ function evaluateEvidenceCompatibility(event) {
     hasRecordedEvidence: true,
     compatible: mismatches.length === 0,
     records,
+    lookupScope: lookup.scope,
+    lookupKey: lookup.key,
     compatibilityMismatches: mismatches,
   };
 }
@@ -483,7 +627,7 @@ function appendAudit(logPath, event, metadata) {
   }
 }
 
-function evaluatePolicy(event, policies) {
+function evaluatePolicy(event, policies, hookContext) {
   if (!isGuardedTool(event, policies)) {
     return { outcome: "pass", metadata: { guarded: false, readOnlyBypass: true } };
   }
@@ -496,7 +640,7 @@ function evaluatePolicy(event, policies) {
     ...collectMissingCompletionFields(event, policies),
   ];
   const hardBlock = detectHardBlock(event, environment, missingFields, policies);
-  const evidenceCheck = evaluateEvidenceCompatibility(event);
+  const evidenceCheck = evaluateEvidenceCompatibility(event, hookContext);
   const metadata = {
     guarded: true,
     environment,
@@ -509,6 +653,8 @@ function evaluatePolicy(event, policies) {
     evidenceCompatible: evidenceCheck.compatible,
     evidence_claim_match: evidenceCheck.compatible,
     ledgerRecordCount: evidenceCheck.records.length,
+    evidenceLookupScope: evidenceCheck.lookupScope,
+    evidenceLookupKey: evidenceCheck.lookupKey,
     compatibilityMismatches: evidenceCheck.compatibilityMismatches,
   };
 
@@ -527,7 +673,9 @@ function evaluatePolicy(event, policies) {
       decision: "require_approval",
       reason: "missing_recorded_evidence",
       outcome: "approval",
-      description: "Missing recorded evidence in ledger for guarded action. Complete claim is insufficient. Run preflight.record_evidence before write/edit/exec/config/deploy.",
+      description:
+        `Missing recorded evidence in ledger for guarded action. Complete claim is insufficient. ` +
+        `Run ${RECORD_EVIDENCE_TOOL_NAME} (gateway method ${RECORD_EVIDENCE_GATEWAY_METHOD}) before write/edit/exec/config/deploy.`,
       metadata,
     };
   }
@@ -560,7 +708,148 @@ function evaluatePolicy(event, policies) {
   };
 }
 
-export { EvidenceLedger, evaluatePolicy, getEvidenceLedger, loadPolicies, resolveConfig };
+function normalizePolicyWritePayload(rawPayload) {
+  const payload = rawPayload && typeof rawPayload === "object" ? rawPayload : {};
+  const preflightClaim =
+    payload.preflight_claim && typeof payload.preflight_claim === "object"
+      ? payload.preflight_claim
+      : payload.preflightClaim && typeof payload.preflightClaim === "object"
+        ? payload.preflightClaim
+        : {};
+  return {
+    path: normalizeOptionalText(payload.path, ""),
+    content: typeof payload.content === "string" ? payload.content : String(payload.content ?? ""),
+    preflight_claim: preflightClaim,
+    run_id: normalizeOptionalText(payload.run_id ?? payload.runId, ""),
+    session_id: normalizeOptionalText(payload.session_id ?? payload.sessionId, ""),
+    session_key: normalizeOptionalText(payload.session_key ?? payload.sessionKey, ""),
+  };
+}
+
+function resolvePolicyToolContext(payload, ctx) {
+  return {
+    runId: normalizeOptionalText(payload.run_id ?? ctx?.runId, ""),
+    sessionId: normalizeOptionalText(payload.session_id ?? ctx?.sessionId ?? ctx?.sessionManager?.getSessionId?.(), ""),
+    sessionKey: normalizeOptionalText(payload.session_key ?? ctx?.sessionKey, ""),
+    agentId: ctx?.agentId,
+  };
+}
+
+function buildPolicyWriteEvent(payload, context, toolCallId) {
+  return {
+    toolName: "write",
+    params: {
+      path: payload.path,
+      content: payload.content,
+      preflight_claim: payload.preflight_claim,
+    },
+    derivedPaths: [payload.path],
+    runId: context.runId || undefined,
+    toolCallId,
+  };
+}
+
+function buildPolicyDecisionToolResult(result) {
+  if (result.outcome === "block") {
+    return {
+      content: [
+        {
+          type: "text",
+          text: result.blockReason ?? "Policy hard block.",
+        },
+      ],
+      details: {
+        ok: false,
+        status: "blocked",
+        decision: result.decision,
+        reason: result.reason,
+        metadata: result.metadata,
+      },
+    };
+  }
+
+  if (result.outcome === "approval") {
+    return {
+      content: [
+        {
+          type: "text",
+          text:
+            `${result.description} This plugin-owned tool did not mutate the target. ` +
+            "Use human approval policy outside this tool or record compatible evidence and retry.",
+        },
+      ],
+      details: {
+        ok: false,
+        status: "approval_required",
+        decision: result.decision,
+        reason: result.reason,
+        metadata: result.metadata,
+      },
+    };
+  }
+
+  return null;
+}
+
+function executePolicyWriteFile(rawPayload, options = {}) {
+  const payload = normalizePolicyWritePayload(rawPayload);
+  if (!payload.path) {
+    return {
+      content: [{ type: "text", text: "policy_write_file requires a non-empty path." }],
+      details: { ok: false, status: "invalid_request", reason: "missing_path" },
+    };
+  }
+
+  const context = resolvePolicyToolContext(payload, options.context);
+  const event = buildPolicyWriteEvent(payload, context, options.toolCallId);
+  const result = evaluatePolicy(event, options.policies, context);
+
+  appendAudit(options.auditLogPath ?? DEFAULT_AUDIT_LOG, event, {
+    ...result.metadata,
+    agentId: context.agentId,
+    sessionId: context.sessionId,
+    sessionKey: context.sessionKey,
+    mode: options.mode ?? "enforce",
+    outcome: result.outcome,
+    executionSurface: POLICY_WRITE_FILE_TOOL_NAME,
+  });
+
+  if (options.mode === "audit") {
+    fs.mkdirSync(path.dirname(payload.path), { recursive: true });
+    fs.writeFileSync(payload.path, payload.content);
+    return {
+      content: [{ type: "text", text: `Policy audit mode wrote ${payload.content.length} bytes to ${payload.path}.` }],
+      details: { ok: true, status: "written", auditOnly: true, path: payload.path, bytes: payload.content.length },
+    };
+  }
+
+  const blockedOrApproval = buildPolicyDecisionToolResult(result);
+  if (blockedOrApproval) return blockedOrApproval;
+
+  fs.mkdirSync(path.dirname(payload.path), { recursive: true });
+  fs.writeFileSync(payload.path, payload.content);
+  return {
+    content: [{ type: "text", text: `Policy write completed: ${payload.content.length} bytes to ${payload.path}.` }],
+    details: {
+      ok: true,
+      status: "written",
+      decision: result.decision,
+      reason: result.reason,
+      path: payload.path,
+      bytes: payload.content.length,
+      metadata: result.metadata,
+    },
+  };
+}
+
+export {
+  EvidenceLedger,
+  evaluatePolicy,
+  executePolicyWriteFile,
+  getEvidenceLedger,
+  loadPolicies,
+  resolveConfig,
+};
 
 export default definePluginEntry({
   id: "policy-engine",
@@ -569,6 +858,91 @@ export default definePluginEntry({
   register(api) {
     let pluginConfig = resolveConfig(api.pluginConfig);
     let policies = loadPolicies(pluginConfig.policiesDir);
+
+    api.registerTool?.({
+      name: RECORD_EVIDENCE_TOOL_NAME,
+      label: "Preflight Record Evidence",
+      description:
+        "Synchronously record consulted evidence in the policy ledger before a guarded mutation. Use after a real read/search and before write/edit/apply_patch/exec/gateway changes.",
+      promptSnippet: "Record evidence before a guarded mutation",
+      promptGuidelines: [
+        `Use ${RECORD_EVIDENCE_TOOL_NAME} after you inspect or search and before you mutate files, config, or infrastructure.`,
+        "Summarize what source you consulted and how it supports the pending change.",
+      ],
+      parameters: RECORD_EVIDENCE_TOOL_SCHEMA,
+      prepareArguments(args) {
+        const payload = args && typeof args === "object" ? args : {};
+        return {
+          source_type: normalizeOptionalText(payload.source_type ?? payload.sourceType, ""),
+          source_ref: normalizeOptionalText(payload.source_ref ?? payload.sourceRef, ""),
+          query_or_path: normalizeOptionalText(payload.query_or_path ?? payload.queryOrPath, ""),
+          summary: normalizeOptionalText(payload.summary, ""),
+          supports_claim: normalizeOptionalText(payload.supports_claim ?? payload.supportsClaim, ""),
+          run_id: normalizeOptionalText(payload.run_id ?? payload.runId, ""),
+          session_id: normalizeOptionalText(payload.session_id ?? payload.sessionId, ""),
+          session_key: normalizeOptionalText(payload.session_key ?? payload.sessionKey, ""),
+        };
+      },
+      executionMode: "sequential",
+      async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+        if (signal?.aborted) throw new Error("Operation aborted");
+
+        const evidence = recordEvidencePayload(params, {
+          sessionId: ctx?.sessionManager?.getSessionId?.(),
+        });
+
+        return {
+          content: [
+            {
+              type: "text",
+              text:
+                `Evidence recorded in policy ledger: ${evidence.sourceType} -> ${evidence.sourceRef}. ` +
+                `Use a compatible preflight_claim in the next guarded mutation.`,
+            },
+          ],
+          details: {
+            ok: true,
+            recorded: true,
+            evidenceId: evidence.id,
+            runId: evidence.runId,
+            sessionId: evidence.sessionId,
+            sessionKey: evidence.sessionKey,
+          },
+        };
+      },
+    });
+
+    api.registerTool?.({
+      name: POLICY_WRITE_FILE_TOOL_NAME,
+      label: "Policy Write File",
+      description:
+        "Write a file only after Policy Engine verifies recorded evidence, preflight claim completeness, and hard-block rules. Use this instead of the built-in write tool for governed mutations.",
+      promptSnippet: "Governed file write with recorded evidence",
+      promptGuidelines: [
+        `Use ${RECORD_EVIDENCE_TOOL_NAME} before ${POLICY_WRITE_FILE_TOOL_NAME}.`,
+        "Do not use the built-in write tool for governed file mutations when this tool is available.",
+      ],
+      parameters: POLICY_WRITE_FILE_TOOL_SCHEMA,
+      prepareArguments(args) {
+        return normalizePolicyWritePayload(args);
+      },
+      executionMode: "sequential",
+      async execute(toolCallId, params, signal, _onUpdate, ctx) {
+        if (signal?.aborted) throw new Error("Operation aborted");
+        return executePolicyWriteFile(params, {
+          policies,
+          auditLogPath: pluginConfig.auditLogPath,
+          mode: pluginConfig.mode,
+          toolCallId,
+          context: {
+            agentId: ctx?.agentId,
+            runId: ctx?.runId,
+            sessionId: ctx?.sessionId ?? ctx?.sessionManager?.getSessionId?.(),
+            sessionKey: ctx?.sessionKey,
+          },
+        });
+      },
+    });
 
     api.registerHook(
       "before_tool_call",
@@ -583,10 +957,11 @@ export default definePluginEntry({
           return {};
         }
 
-        const result = evaluatePolicy(event, policies);
+        const result = evaluatePolicy(event, policies, ctx);
         appendAudit(pluginConfig.auditLogPath, event, {
           ...result.metadata,
           agentId: ctx?.agentId,
+          sessionId: ctx?.sessionId,
           sessionKey: ctx?.sessionKey,
           mode: pluginConfig.mode,
           outcome: result.outcome,
@@ -625,26 +1000,17 @@ export default definePluginEntry({
       { name: "policy-engine-preflight", priority: 150 },
     );
 
-    api.registerGatewayMethod?.("preflight.record_evidence", async ({ params, respond }) => {
+    api.registerGatewayMethod?.(RECORD_EVIDENCE_GATEWAY_METHOD, async ({ params, respond }) => {
       try {
-        const payload = params && typeof params === "object" ? params : {};
-        const evidence = getEvidenceLedger().record({
-          id: "",
-          timestamp: new Date().toISOString(),
-          runId: payload.run_id ?? payload.runId ?? "unknown",
-          sessionId: payload.session_id ?? payload.sessionId ?? "unknown",
-          sourceType: payload.source_type ?? payload.sourceType ?? "unknown",
-          sourceRef: payload.source_ref ?? payload.sourceRef ?? "unknown",
-          queryOrPath: payload.query_or_path ?? payload.queryOrPath ?? "",
-          summary: payload.summary ?? "",
-          supportsClaim: payload.supports_claim ?? payload.supportsClaim ?? "",
-        });
+        const evidence = recordEvidencePayload(params);
 
         respond(true, {
           ok: true,
           recorded: true,
           evidenceId: evidence.id,
           runId: evidence.runId,
+          sessionId: evidence.sessionId,
+          sessionKey: evidence.sessionKey,
           message: `Evidence recorded: ${evidence.sourceType} -> ${evidence.sourceRef}`,
         });
       } catch (error) {
@@ -658,14 +1024,47 @@ export default definePluginEntry({
     api.registerGatewayMethod?.("policy_engine.evidence_list", async ({ params, respond }) => {
       try {
         const payload = params && typeof params === "object" ? params : {};
-        const runId = payload.run_id ?? payload.runId ?? "unknown";
-        const records = getEvidenceLedger().getRecordsForRun(runId);
+        const runId = payload.run_id ?? payload.runId;
+        const sessionId = payload.session_id ?? payload.sessionId;
+        const sessionKey = payload.session_key ?? payload.sessionKey;
+        const lookup = getEvidenceLedger().findRecords({
+          runId,
+          sessionId,
+          sessionKey,
+        });
         respond(true, {
           ok: true,
-          runId,
-          recordCount: records.length,
-          records,
+          runId: runId ?? null,
+          sessionId: sessionId ?? null,
+          sessionKey: sessionKey ?? null,
+          lookupScope: lookup.scope,
+          lookupKey: lookup.key,
+          recordCount: lookup.records.length,
+          records: lookup.records,
         });
+      } catch (error) {
+        respond(false, {
+          ok: false,
+          error: String(error),
+        });
+      }
+    });
+
+    api.registerGatewayMethod?.(POLICY_WRITE_FILE_GATEWAY_METHOD, async ({ params, respond }) => {
+      try {
+        pluginConfig = resolveConfig(api.pluginConfig);
+        policies = loadPolicies(pluginConfig.policiesDir);
+        const result = executePolicyWriteFile(params, {
+          policies,
+          auditLogPath: pluginConfig.auditLogPath,
+          mode: pluginConfig.mode,
+          context: {
+            runId: params?.run_id ?? params?.runId,
+            sessionId: params?.session_id ?? params?.sessionId,
+            sessionKey: params?.session_key ?? params?.sessionKey,
+          },
+        });
+        respond(result.details?.ok === true, result);
       } catch (error) {
         respond(false, {
           ok: false,
@@ -678,11 +1077,15 @@ export default definePluginEntry({
       respond(true, {
         ok: true,
         plugin: "policy-engine",
-        version: "0.2.2",
+        version: "0.2.4",
         mode: pluginConfig.mode,
         enabled: pluginConfig.enabled,
         onlyAgents: pluginConfig.onlyAgents,
         ledger: "active",
+        evidenceTool: RECORD_EVIDENCE_TOOL_NAME,
+        evidenceGatewayMethod: RECORD_EVIDENCE_GATEWAY_METHOD,
+        policyWriteTool: POLICY_WRITE_FILE_TOOL_NAME,
+        policyWriteGatewayMethod: POLICY_WRITE_FILE_GATEWAY_METHOD,
         runtimeEntrypoint: "index.mjs",
       });
     });

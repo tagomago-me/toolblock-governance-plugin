@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 
-import plugin, { evaluatePolicy, getEvidenceLedger, loadPolicies, resolveConfig } from "../index.mjs";
+import plugin, { evaluatePolicy, executePolicyWriteFile, getEvidenceLedger, loadPolicies, resolveConfig } from "../index.mjs";
 
 const pluginRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const policies = loadPolicies(path.join(pluginRoot, "policies"));
@@ -39,8 +39,9 @@ test("registers before_tool_call hook", () => {
   assert.equal(hooks.length, 1);
   assert.equal(hooks[0].name, "before_tool_call");
   assert.equal(hooks[0].options.priority, 150);
-  assert.equal(tools.length, 1);
-  assert.equal(tools[0].name, "preflight_record_evidence");
+  assert.equal(tools.length, 2);
+  assert.ok(tools.some((tool) => tool.name === "preflight_record_evidence"));
+  assert.ok(tools.some((tool) => tool.name === "policy_write_file"));
 });
 
 
@@ -60,9 +61,11 @@ test("registers gateway methods and records evidence through runtime entrypoint"
   });
 
   assert.ok(tools.some((tool) => tool.name === "preflight_record_evidence"));
+  assert.ok(tools.some((tool) => tool.name === "policy_write_file"));
   assert.ok(gatewayMethods.has("preflight.record_evidence"));
   assert.ok(gatewayMethods.has("policy_engine.status"));
   assert.ok(gatewayMethods.has("policy_engine.evidence_list"));
+  assert.ok(gatewayMethods.has("policy_engine.write_file"));
 
   let recordResponse;
   await gatewayMethods.get("preflight.record_evidence")({
@@ -106,7 +109,7 @@ test("registers gateway methods and records evidence through runtime entrypoint"
   });
 
   assert.equal(statusResponse.ok, true);
-  assert.equal(statusResponse.payload.version, "0.2.3");
+  assert.equal(statusResponse.payload.version, "0.2.4");
   assert.equal(statusResponse.payload.evidenceTool, "preflight_record_evidence");
   assert.equal(statusResponse.payload.evidenceGatewayMethod, "preflight.record_evidence");
   assert.equal(statusResponse.payload.runtimeEntrypoint, "index.mjs");

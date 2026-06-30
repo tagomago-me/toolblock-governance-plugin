@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import os from "node:os";
 
-import { evaluatePolicy, loadPolicies, getEvidenceLedger } from "../index.mjs";
+import { evaluatePolicy, executePolicyWriteFile, loadPolicies, getEvidenceLedger } from "../index.mjs";
 
 const TMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "policy-acceptance-"));
 const PLUGIN_DIR = path.join(TMP_DIR, "plugin");
@@ -101,6 +101,135 @@ test("AC2: write without evidence requires approval", () => {
 
   assert.ok(result.decision === "block" || result.decision === "require_approval");
   assert.equal(result.metadata.hasRecordedEvidence, false);
+});
+
+test("AC2b: policy_write_file without evidence does not mutate", () => {
+  const runId = `ac2b-flow-${Date.now()}`;
+  const targetPath = path.join(TMP_DIR, "ac2b-no-evidence.txt");
+
+  const result = executePolicyWriteFile(
+    {
+      path: targetPath,
+      content: "must not be written",
+      run_id: runId,
+      preflight_claim: {
+        target_file: targetPath,
+        user_request: "Negative policy write test",
+        skill_used: "test-skill",
+        source_route: "internal",
+        plane_ticket: "TEST-AC2B",
+        evidence_ref: ["missing-ledger"],
+        action_type: "write",
+        risk: "low",
+        rollback: "delete file",
+        impact_note: "test artifact",
+      },
+    },
+    {
+      policies,
+      auditLogPath: path.join(TMP_DIR, "policy-write-ac2b.jsonl"),
+      mode: "enforce",
+      context: { runId },
+    },
+  );
+
+  assert.equal(result.details.status, "approval_required");
+  assert.equal(fs.existsSync(targetPath), false);
+});
+
+test("AC2c: policy_write_file with compatible evidence mutates", () => {
+  const runId = `ac2c-flow-${Date.now()}`;
+  const targetPath = path.join(TMP_DIR, "ac2c-with-evidence.txt");
+  const ledger = getEvidenceLedger();
+
+  ledger.record({
+    id: "",
+    timestamp: new Date().toISOString(),
+    runId,
+    sessionId: "ac2c-session",
+    sourceType: "read",
+    sourceRef: `file:${targetPath}`,
+    queryOrPath: targetPath,
+    summary: "Reviewed target write requirements",
+    supportsClaim: "The policy write test content is allowed",
+  });
+
+  const result = executePolicyWriteFile(
+    {
+      path: targetPath,
+      content: "policy write ok",
+      run_id: runId,
+      preflight_claim: {
+        target_file: targetPath,
+        user_request: "Positive policy write test",
+        skill_used: "test-skill",
+        source_route: "internal",
+        plane_ticket: "TEST-AC2C",
+        evidence_ref: [`file:${targetPath}`],
+        action_type: "write",
+        risk: "low",
+        rollback: "delete file",
+        impact_note: "test artifact",
+      },
+    },
+    {
+      policies,
+      auditLogPath: path.join(TMP_DIR, "policy-write-ac2c.jsonl"),
+      mode: "enforce",
+      context: { runId },
+    },
+  );
+
+  assert.equal(result.details.status, "written");
+  assert.equal(fs.readFileSync(targetPath, "utf8"), "policy write ok");
+});
+
+test("AC2d: policy_write_file falls back to target-path evidence when session identity is unavailable", () => {
+  const evidenceRunId = `ac2d-evidence-${Date.now()}`;
+  const targetPath = path.join(TMP_DIR, "ac2d-target-fallback.txt");
+  const ledger = getEvidenceLedger();
+
+  ledger.record({
+    id: "",
+    timestamp: new Date().toISOString(),
+    runId: evidenceRunId,
+    sessionId: "unknown",
+    sessionKey: "unknown",
+    sourceType: "read",
+    sourceRef: `file:${targetPath}`,
+    queryOrPath: targetPath,
+    summary: "Reviewed target write requirements without usable hosted session identity",
+    supportsClaim: "The policy write target is explicitly supported",
+  });
+
+  const result = executePolicyWriteFile(
+    {
+      path: targetPath,
+      content: "target fallback ok",
+      preflight_claim: {
+        target_file: targetPath,
+        user_request: "Positive policy write target fallback test",
+        skill_used: "test-skill",
+        source_route: "internal",
+        plane_ticket: "TEST-AC2D",
+        evidence_ref: [`file:${targetPath}`],
+        action_type: "write",
+        risk: "low",
+        rollback: "delete file",
+        impact_note: "test artifact",
+      },
+    },
+    {
+      policies,
+      auditLogPath: path.join(TMP_DIR, "policy-write-ac2d.jsonl"),
+      mode: "enforce",
+      context: {},
+    },
+  );
+
+  assert.equal(result.details.status, "written");
+  assert.equal(result.details.metadata.evidenceLookupScope, "targetPath");
+  assert.equal(fs.readFileSync(targetPath, "utf8"), "target fallback ok");
 });
 
 test("AC3: production delete requires approval", () => {

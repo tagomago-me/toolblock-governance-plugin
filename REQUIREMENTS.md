@@ -58,15 +58,17 @@ The runtime-exposed workaround flow must support:
 1. read/search
 2. `preflight_record_evidence` for agent turns
 3. `preflight.record_evidence` for direct gateway usage
-4. guarded mutation with `preflight_claim`
+4. guarded mutation through plugin-owned tools with `preflight_claim`
 
 ### R8. Expose operational inspection methods
 
 The runtime bundle must expose:
 
 - `preflight_record_evidence`
+- `policy_write_file`
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+- `policy_engine.write_file`
 
 ### R8a. Bridge agent and gateway surfaces honestly
 
@@ -94,15 +96,17 @@ Current honest scope:
 
 ### AC1
 
-`read/search -> preflight_record_evidence -> write` passes in a real agent flow when evidence and claim are compatible.
+`read/search -> preflight_record_evidence -> policy_write_file` passes in a real agent flow when evidence and claim are compatible.
 
 ### AC1b
 
-`read/search -> preflight.record_evidence -> write` passes for direct gateway validation when evidence and claim are compatible.
+`read/search -> preflight.record_evidence -> policy_engine.write_file` passes for direct gateway validation when evidence and claim are compatible.
 
 ### AC2
 
 A guarded mutation without recorded evidence requires approval.
+
+For plugin-owned mutation tools, this means the tool returns an approval-required result and does not mutate. Human approval is handled by operational policy outside this tool until OpenClaw exposes a native approval resolver for plugin-owned execution.
 
 ### AC3
 
@@ -128,6 +132,7 @@ Evidence recorded from the agent tool must remain usable during `before_tool_cal
 
 - native runtime causal evidence verification
 - upstream OpenClaw core integration
+- patching OpenClaw runtime internals
 - pretending that `after_tool_call` telemetry is already trustworthy for this use case
 
 ## Required discipline

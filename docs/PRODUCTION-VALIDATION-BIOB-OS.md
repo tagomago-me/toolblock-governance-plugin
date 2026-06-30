@@ -4,7 +4,7 @@ Date: 2026-06-30
 
 ## Scope
 
-This note records what was observed on Mauro's production OpenClaw host `biob-os` after promoting plugin version `0.2.3`.
+This note records what was observed on Mauro's production OpenClaw host `biob-os` and the follow-up change introduced in plugin version `0.2.4`.
 
 This is not a design note or a test-environment claim. It is the production snapshot.
 
@@ -27,13 +27,15 @@ The gateway-reported plugin status is:
 ```json
 {
   "plugin": "policy-engine",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "mode": "enforce",
   "enabled": true,
   "onlyAgents": ["main"],
   "ledger": "active",
   "evidenceTool": "preflight_record_evidence",
   "evidenceGatewayMethod": "preflight.record_evidence",
+  "policyWriteTool": "policy_write_file",
+  "policyWriteGatewayMethod": "policy_engine.write_file",
   "runtimeEntrypoint": "index.mjs"
 }
 ```
@@ -44,6 +46,7 @@ The gateway control-plane methods are live:
 
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+- `policy_engine.write_file`
 - `preflight.record_evidence`
 
 The production gateway accepted a direct control-plane evidence write and reported the plugin as active.
@@ -56,7 +59,7 @@ The hosted agent was instructed to:
 
 1. read the plugin README
 2. call `preflight_record_evidence`
-3. perform a guarded `write`
+3. perform a guarded write
 
 ### First validation result
 
@@ -75,7 +78,7 @@ The production manifest was missing:
 ```json
 {
   "contracts": {
-    "tools": ["preflight_record_evidence"]
+    "tools": ["preflight_record_evidence", "policy_write_file"]
   }
 }
 ```
@@ -90,7 +93,7 @@ The manifest at:
 
 was patched to declare:
 
-- `contracts.tools = ["preflight_record_evidence"]`
+- `contracts.tools = ["preflight_record_evidence", "policy_write_file"]`
 
 Then the gateway service was restarted:
 
@@ -110,9 +113,46 @@ The hosted session history included the tool result:
 
 That is the production proof that the hosted-agent workflow is now functioning.
 
+### Third validation result
+
+Version `0.2.4` adds `policy_write_file`.
+
+That change is necessary because the hosted built-in `write` tool is an OpenClaw core surface and does not reliably carry plugin-specific governance metadata. The supported governed write path is now:
+
+1. read/search
+2. `preflight_record_evidence`
+3. `policy_write_file`
+
+The production configuration now denies native mutation tools for `main`:
+
+- `write`
+- `edit`
+- `apply_patch`
+
+The deny list was applied through `OPENCLAW_HOME=/home/ubuntu openclaw config set ... --strict-json`, then `openclaw-gateway.service` was restarted.
+
+Direct gateway validation confirmed:
+
+- `policy_engine.status` reports version `0.2.4`
+- `policy_engine.write_file` without evidence does not create the target file
+- `preflight.record_evidence` followed by `policy_engine.write_file` creates the target file
+
+Hosted `main` positive validation confirmed:
+
+- `main` read the production plugin README
+- `main` called `preflight_record_evidence`
+- `main` called `policy_write_file`
+- `/tmp/policy-engine-hosted-policy-write-1782847843095.txt` was created with `hosted policy write validation`
+
+Hosted `main` negative validation confirmed:
+
+- `main` called `policy_write_file` without evidence
+- the tool returned missing recorded evidence
+- `/tmp/policy-engine-hosted-policy-write-negative-1782848284721.txt` was not created
+
 ## Meaning
 
-Production is working for the current workaround model.
+Production is moving from hook-observer governance to plugin-owned mutation governance.
 
 What works:
 
@@ -121,11 +161,14 @@ What works:
 - synchronous evidence ledger
 - direct gateway evidence recording
 - hosted `main` agent evidence recording through `preflight_record_evidence`
-- hosted `main` agent guarded write flow after evidence registration
+- hosted `main` agent governed write flow through `policy_write_file` after evidence registration
+- hosted `main` no-evidence governed write rejection
+- `main` native `write`, `edit`, and `apply_patch` denied by agent tool policy
 
 What still does not exist:
 
 - native causal telemetry proving that a prior read/search happened through runtime telemetry without the explicit evidence tool workaround
+- a guarantee that OpenClaw built-in `write` carries policy-specific governance metadata
 
 ## Current honest status
 
@@ -133,16 +176,20 @@ What still does not exist:
 - production plugin bundle: installed
 - gateway runtime path: active
 - hosted-agent tool exposure: fixed
-- end-to-end workaround flow: working in production
+- plugin-owned governed write surface: `policy_write_file`
+- main native mutation bypass path: denied for `write`, `edit`, and `apply_patch`
+- direct gateway validation: passed
+- hosted main positive validation: passed
+- hosted main negative validation: passed
 
 ## Immediate next implementation target
 
-Keep the GitHub source-of-truth repository aligned with the working production manifest and validation record.
+Extend the plugin-owned mutation surface beyond file writes.
 
 This is now the blocking item between:
 
-- "working production workaround"
+- "governed writes working"
 
 and
 
-- "clean canonical repository state that documents the real fix"
+- "all mutation classes have first-class governed tools"

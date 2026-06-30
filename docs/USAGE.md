@@ -8,7 +8,7 @@ The current operational pattern is explicit:
 
 1. perform the research or inspection
 2. record it with `preflight_record_evidence`
-3. perform the guarded mutation with a compatible `preflight_claim`
+3. perform the guarded mutation with a plugin-owned governed tool such as `policy_write_file`
 
 If you are driving the runtime directly through the Gateway instead of an agent tool loop, the control-plane equivalent is `preflight.record_evidence`.
 
@@ -46,6 +46,8 @@ await preflight_record_evidence({
 
 The tool writes synchronously to the evidence ledger and automatically falls back to the active session identity when a direct `runId` is not available on the tool surface.
 
+If OpenClaw does not expose the same run or session identity to both plugin tools, `policy_write_file` can match compatible recorded evidence by the target path. This is still explicit ledger evidence, not native causal telemetry.
+
 ### Step 2b: record evidence through the Gateway
 
 If you are validating or operating directly against gateway methods, call:
@@ -64,12 +66,12 @@ await gateway.call("preflight.record_evidence", {
 
 ### Step 3: perform guarded mutation
 
-Then run the guarded tool with a compatible `preflight_claim`.
+Then run the governed plugin-owned tool with a compatible `preflight_claim`.
 
 Example shape:
 
 ```javascript
-await write({
+await policy_write_file({
   path: "/workspace/target.md",
   content: "new content",
   preflight_claim: {
@@ -85,6 +87,8 @@ await write({
   },
 });
 ```
+
+Do not use the built-in `write` tool as the canonical governance path for hosted `main`. The built-in tool is an OpenClaw core surface and does not guarantee the policy-specific argument shape this plugin needs. The governed surface is `policy_write_file`.
 
 ## Outcomes
 
@@ -110,6 +114,7 @@ Important detail:
 
 - a complete claim without recorded evidence still requires approval
 - the recommended agent-side fix is `preflight_record_evidence`
+- `policy_write_file` returns `approval_required` and does not mutate when evidence is missing
 
 ### Block
 
@@ -131,3 +136,4 @@ You can inspect runtime state with:
 
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+- `policy_engine.write_file`
