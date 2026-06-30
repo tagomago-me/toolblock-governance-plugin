@@ -1,6 +1,6 @@
 # Policy Engine for OpenClaw
 
-Version: `0.2.2`
+Version: `0.2.3`
 
 This repository is the source of truth for the current Policy Engine workaround that was validated in the EC2 test bundle and prepared for rollout into Mauro's OpenClaw setup.
 
@@ -40,9 +40,15 @@ The canonical runtime entrypoint is `index.mjs`.
 
 The plugin exposes:
 
+- `preflight_record_evidence` (agent tool)
 - `preflight.record_evidence`
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+
+The naming split is intentional:
+
+- agent/tool surface uses `preflight_record_evidence`
+- gateway/method surface uses `preflight.record_evidence`
 
 For Mauro's production rollout, the plugin can now be scoped to specific agents with plugin config:
 
@@ -55,9 +61,10 @@ For Mauro's production rollout, the plugin can now be scoped to specific agents 
 ## Canonical workflow
 
 1. Read/search the source you need.
-2. Call `preflight.record_evidence`.
-3. Execute the guarded mutation with a compatible `preflight_claim`.
-4. Let the plugin return one of:
+2. Record it with `preflight_record_evidence`.
+3. If you are operating through the Gateway instead of an agent tool loop, call `preflight.record_evidence`.
+4. Execute the guarded mutation with a compatible `preflight_claim`.
+5. Let the plugin return one of:
    - `pass`
    - `require_approval`
    - `block`
@@ -83,6 +90,7 @@ For Mauro's production rollout, the plugin can now be scoped to specific agents 
 - [Usage](docs/USAGE.md)
 - [Objective and Implementation Spec](docs/OBJECTIVE-AND-IMPLEMENTATION-SPEC.md)
 - [EC2 Test Validation](docs/VALIDATION-EC2-TEST.md)
+- [Production Validation on biob-os](docs/PRODUCTION-VALIDATION-BIOB-OS.md)
 - [Evidence Ledger Workaround](docs/EVIDENCE-LEDGER-WORKAROUND.md)
 - [Deployment Context](docs/DEPLOYMENT-CONTEXT.md)
 
@@ -103,3 +111,16 @@ The current `package.json` keeps the tested OpenClaw dependency path used on the
 `/home/ubuntu/.openclaw/npm/node_modules/openclaw`
 
 That is intentional for this source-of-truth snapshot because it mirrors the working test bundle that was validated on Mauro's OpenClaw EC2 environment.
+
+## Current production note
+
+On `biob-os`, the plugin is loaded in the OpenClaw gateway and reports:
+
+- version `0.2.3`
+- `mode: "enforce"`
+- `onlyAgents: ["main"]`
+- gateway method `preflight.record_evidence`
+
+But the hosted `main` agent session currently does **not** expose `preflight_record_evidence` in its live tool set, so the end-to-end canonical workflow is still incomplete in production.
+
+See [Production Validation on biob-os](docs/PRODUCTION-VALIDATION-BIOB-OS.md) for the exact observed behavior and next-step implication.
