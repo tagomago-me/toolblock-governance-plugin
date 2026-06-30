@@ -10,6 +10,18 @@ The current operational pattern is explicit:
 2. record it with `preflight.record_evidence`
 3. perform the guarded mutation with a compatible `preflight_claim`
 
+## Agent scoping
+
+If you want the plugin active only for `main`, configure:
+
+```json
+{
+  "onlyAgents": ["main"]
+}
+```
+
+When `onlyAgents` is empty or omitted, the plugin applies to all agents.
+
 ## Example flow
 
 ### Step 1: inspect or search
