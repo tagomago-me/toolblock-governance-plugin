@@ -1,0 +1,75 @@
+version: 0.1.0
+
+evidence_ref_types:
+  - udl_entry
+  - rag_table_entry
+  - lcm_sqlite_entry
+  - schema_entry
+  - contract_entry
+  - file_path
+  - plane_ticket
+  - log_ref
+  - command_output
+
+requirements_by_risk:
+  low:
+    required:
+      - target_file
+      - user_request
+      - rollback
+    missing: require_approval
+
+  medium:
+    required:
+      - plane_ticket
+      - evidence_ref
+      - rollback
+      - impact_note
+    missing: require_approval
+
+  high:
+    required:
+      - plane_ticket
+      - skill_or_procedure
+      - evidence_refs_min_2
+      - parent_contract
+      - impact_above
+      - impact_lateral
+      - validation_plan
+      - rollback
+    missing: require_approval
+
+  critical:
+    required:
+      - plane_ticket
+      - skill_or_procedure
+      - evidence_refs_min_2
+      - parent_contract
+      - impact_above
+      - impact_lateral
+      - validation_plan
+      - rollback
+      - human_approval
+    missing: require_approval
+
+hard_blocks:
+  - name: destructive_production_without_rollback
+    when:
+      environment: production
+      operation_kind: destructive
+      missing:
+        - rollback
+    decision: block
+  - name: close_plane_without_resolution_memory
+    when:
+      tool: plane
+      operation_contains:
+        - close
+        - done
+    missing:
+      - resolution_summary
+      - root_cause
+      - evidence_refs
+      - validation_performed
+      - memory_or_documentation_updated
+    decision: require_approval
