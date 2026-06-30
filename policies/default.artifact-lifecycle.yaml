@@ -1,0 +1,45 @@
+version: 0.1.0
+purpose: "Prevent temporary and permanent agent-generated artifacts from accumulating in the same place."
+
+classes:
+  ephemeral:
+    examples:
+      - one-off temp script
+      - scratch output
+      - debug dump
+    location: ".tmp/"
+    retention: "delete_after_run"
+    require_index: false
+
+  session:
+    examples:
+      - diagnostic script
+      - experiment log
+    location: "runs/<run_id>/"
+    retention: "keep_7_days"
+    require_index: "run_manifest"
+
+  reusable:
+    examples:
+      - utility script
+      - validator
+      - importer
+    location: "tools/"
+    retention: "permanent"
+    require_index: "udl"
+
+  governed:
+    examples:
+      - agent policy
+      - hook
+      - deployment script
+    location: "system/"
+    retention: "permanent"
+    require_index: "contract"
+    risk: high
+
+hard_rules:
+  - "No script without lifecycle class."
+  - "No temporary script outside .tmp/ or runs/."
+  - "No permanent script without index entry."
+  - "No deletion of indexed artifact without approval."
