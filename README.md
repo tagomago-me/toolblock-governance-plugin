@@ -120,7 +120,29 @@ On `biob-os`, the plugin is loaded in the OpenClaw gateway and reports:
 - `mode: "enforce"`
 - `onlyAgents: ["main"]`
 - gateway method `preflight.record_evidence`
+- agent tool `preflight_record_evidence`
 
-But the hosted `main` agent session currently does **not** expose `preflight_record_evidence` in its live tool set, so the end-to-end canonical workflow is still incomplete in production.
+The hosted `main` agent path is now working end to end in production.
 
-See [Production Validation on biob-os](docs/PRODUCTION-VALIDATION-BIOB-OS.md) for the exact observed behavior and next-step implication.
+Root cause of the earlier failure:
+
+- the plugin manifest was missing `contracts.tools`
+- OpenClaw requires that declaration before surfacing plugin-owned agent tools
+
+After adding:
+
+```json
+{
+  "contracts": {
+    "tools": ["preflight_record_evidence"]
+  }
+}
+```
+
+the hosted `main` agent successfully:
+
+1. read the plugin README
+2. called `preflight_record_evidence`
+3. completed the guarded write flow
+
+See [Production Validation on biob-os](docs/PRODUCTION-VALIDATION-BIOB-OS.md) for the exact validation snapshot.
