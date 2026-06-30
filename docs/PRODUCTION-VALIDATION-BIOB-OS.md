@@ -48,7 +48,7 @@ The gateway control-plane methods are live:
 
 The production gateway accepted a direct control-plane evidence write and reported the plugin as active.
 
-## Hosted-agent validation
+## Hosted-agent validation timeline
 
 A real hosted `main` agent session was created on the gateway.
 
@@ -58,7 +58,7 @@ The hosted agent was instructed to:
 2. call `preflight_record_evidence`
 3. perform a guarded `write`
 
-The result was:
+### First validation result
 
 - the agent successfully used `read`
 - the agent successfully used `write`
@@ -66,9 +66,53 @@ The result was:
 - the evidence ledger for that hosted session remained empty
 - the assistant explicitly reported that `preflight_record_evidence` was not available in its tool set
 
+### Root cause
+
+OpenClaw requires plugin-owned agent tools to be declared in the manifest under `contracts.tools`.
+
+The production manifest was missing:
+
+```json
+{
+  "contracts": {
+    "tools": ["preflight_record_evidence"]
+  }
+}
+```
+
+Because of that, the gateway loaded the plugin and its gateway methods, but did not project the plugin-owned agent tool into the hosted `main` agent tool inventory.
+
+### Fix applied in production
+
+The manifest at:
+
+`/home/ubuntu/.openclaw/local-plugins/policy-engine/openclaw.plugin.json`
+
+was patched to declare:
+
+- `contracts.tools = ["preflight_record_evidence"]`
+
+Then the gateway service was restarted:
+
+- `systemctl --user restart openclaw-gateway.service`
+
+### Second validation result
+
+After the manifest fix, the hosted `main` agent successfully:
+
+- read the plugin README
+- called `preflight_record_evidence`
+- wrote the validation artifact
+
+The hosted session history included the tool result:
+
+`Evidence recorded in policy ledger: read -> file:/home/ubuntu/.openclaw/local-plugins/policy-engine/README.md`
+
+That is the production proof that the hosted-agent workflow is now functioning.
+
 ## Meaning
 
-Production is only partially working today.
+Production is working for the current workaround model.
 
 What works:
 
@@ -76,28 +120,29 @@ What works:
 - guarded mutation policy path
 - synchronous evidence ledger
 - direct gateway evidence recording
+- hosted `main` agent evidence recording through `preflight_record_evidence`
+- hosted `main` agent guarded write flow after evidence registration
 
-What does not yet work end to end:
+What still does not exist:
 
-- the hosted `main` agent does not currently receive `preflight_record_evidence` as a usable tool
-
-That means the canonical agent-side workflow documented in [docs/USAGE.md](USAGE.md) is not yet fully available in Mauro's production hosted-agent path.
+- native causal telemetry proving that a prior read/search happened through runtime telemetry without the explicit evidence tool workaround
 
 ## Current honest status
 
 - source of truth repository: updated
 - production plugin bundle: installed
 - gateway runtime path: active
-- hosted-agent tool exposure: not complete
+- hosted-agent tool exposure: fixed
+- end-to-end workaround flow: working in production
 
 ## Immediate next implementation target
 
-Find why the OpenClaw hosted-agent runtime on `biob-os` is not projecting the plugin-registered tool into the live `main` agent tool inventory.
+Keep the GitHub source-of-truth repository aligned with the working production manifest and validation record.
 
 This is now the blocking item between:
 
-- "plugin installed in production"
+- "working production workaround"
 
 and
 
-- "main hosted agent can actually use the evidence workflow by itself"
+- "clean canonical repository state that documents the real fix"
