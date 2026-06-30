@@ -56,15 +56,26 @@ Destructive production actions without rollback must remain blocked.
 The runtime-exposed workaround flow must support:
 
 1. read/search
-2. `preflight.record_evidence`
-3. guarded mutation with `preflight_claim`
+2. `preflight_record_evidence` for agent turns
+3. `preflight.record_evidence` for direct gateway usage
+4. guarded mutation with `preflight_claim`
 
 ### R8. Expose operational inspection methods
 
 The runtime bundle must expose:
 
+- `preflight_record_evidence`
 - `policy_engine.status`
 - `policy_engine.evidence_list`
+
+### R8a. Bridge agent and gateway surfaces honestly
+
+The repository must document and preserve the naming split:
+
+- `preflight_record_evidence` is the agent-usable tool
+- `preflight.record_evidence` is the gateway method
+
+This split exists because OpenClaw tool naming follows the underscore-style tool catalog while gateway methods use dotted names.
 
 ### R8b. Support scoped activation by agent id
 
@@ -83,7 +94,11 @@ Current honest scope:
 
 ### AC1
 
-`read/search -> preflight.record_evidence -> write` passes when evidence and claim are compatible.
+`read/search -> preflight_record_evidence -> write` passes in a real agent flow when evidence and claim are compatible.
+
+### AC1b
+
+`read/search -> preflight.record_evidence -> write` passes for direct gateway validation when evidence and claim are compatible.
 
 ### AC2
 
@@ -104,6 +119,10 @@ Read-only `exec` remains bypassed.
 ### AC6
 
 The file tested must be the same file the runtime would load.
+
+### AC7
+
+Evidence recorded from the agent tool must remain usable during `before_tool_call` even when the tool surface cannot provide the active `runId`, using runtime-backed session identity as the fallback match.
 
 ## Out of scope for this version
 
