@@ -94,7 +94,7 @@ test("registers gateway methods and records evidence through runtime entrypoint"
   });
 
   assert.equal(statusResponse.ok, true);
-  assert.equal(statusResponse.payload.version, "0.2.1");
+  assert.equal(statusResponse.payload.version, "0.2.2");
   assert.equal(statusResponse.payload.runtimeEntrypoint, "index.mjs");
 });
 
@@ -151,6 +151,30 @@ test("disabled mode bypasses guarded enforcement", async () => {
       params: { path: "/test/disabled.md", content: "x" },
     },
     { agentId: "peter", sessionKey: "test" },
+  );
+
+  assert.deepEqual(result, {});
+});
+
+test("onlyAgents bypasses enforcement for non-target agents", async () => {
+  const hooks = [];
+  plugin.register({
+    pluginConfig: { onlyAgents: ["main"] },
+    registerHook(name, handler, options) {
+      hooks.push({ name, handler, options });
+    },
+    registerGatewayMethod() {},
+    registerReload() {},
+  });
+
+  const result = await hooks[0].handler(
+    {
+      toolName: "write",
+      runId: "non-target-agent-ledger-empty",
+      derivedPaths: ["/test/ignored.md"],
+      params: { path: "/test/ignored.md", content: "x" },
+    },
+    { agentId: "neo", sessionKey: "test" },
   );
 
   assert.deepEqual(result, {});
