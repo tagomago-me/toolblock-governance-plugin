@@ -1,0 +1,51 @@
+{
+  "id": "policy-engine",
+  "name": "Policy Engine",
+  "version": "0.2.1",
+  "description": "OpenClaw plugin that routes guarded actions through risk, evidence, placement, lifecycle, and completion policies before execution.",
+  "main": "index.mjs",
+  "type": "module",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": {
+        "type": "boolean",
+        "default": true
+      },
+      "mode": {
+        "type": "string",
+        "enum": [
+          "audit",
+          "enforce",
+          "disabled"
+        ],
+        "default": "enforce",
+        "description": "Execution mode: audit logs findings only, enforce blocks/approves, disabled bypasses the hook."
+      },
+      "approvalTimeoutMs": {
+        "type": "number",
+        "default": 600000
+      },
+      "approvalTimeoutBehavior": {
+        "type": "string",
+        "enum": [
+          "allow",
+          "deny"
+        ],
+        "default": "deny"
+      },
+      "policiesDir": {
+        "type": "string",
+        "description": "Optional override for the policy YAML directory."
+      },
+      "auditLogPath": {
+        "type": "string",
+        "description": "Optional JSONL audit log path."
+      }
+    }
+  }
+}
