@@ -1,12 +1,8 @@
-# Toolblock Governance Plugin Parts Map
+# Policy Engine Parts Map
 
 This file gives stable names to the parts of the system so the project is easier to reason about.
 
 ## 1. Runtime Guard
-
-Name:
-
-- `Runtime Guard`
 
 What it is:
 
@@ -19,10 +15,6 @@ What it does:
 
 ## 2. Evidence Recorder
 
-Name:
-
-- `Evidence Recorder`
-
 What it is:
 
 - the `preflight.record_evidence` gateway method
@@ -32,10 +24,6 @@ What it does:
 - records explicit evidence for the current run
 
 ## 3. Evidence Ledger
-
-Name:
-
-- `Evidence Ledger`
 
 What it is:
 
@@ -48,13 +36,9 @@ What it does:
 
 ## 4. Policy Evaluator
 
-Name:
-
-- `Policy Evaluator`
-
 What it is:
 
-- the decision logic that evaluates policy against tool call context
+- the decision logic in `evaluatePolicy`
 
 What it does:
 
@@ -65,23 +49,15 @@ What it does:
 
 ## 5. Policy Bundle
 
-Name:
-
-- `Policy Bundle`
-
 What it is:
 
-- the set of YAML policy files
+- the set of YAML policy files under `policies/`
 
 What it does:
 
 - defines rules for preflight, risk, evidence, routing, placement, lifecycle, and completion
 
 ## 6. Status Surface
-
-Name:
-
-- `Status Surface`
 
 What it is:
 
@@ -93,10 +69,6 @@ What it does:
 
 ## 7. Evidence Inspector
 
-Name:
-
-- `Evidence Inspector`
-
 What it is:
 
 - `policy_engine.evidence_list`
@@ -106,10 +78,6 @@ What it does:
 - shows recorded evidence for a given run
 
 ## 8. Approval Contract
-
-Name:
-
-- `Approval Contract`
 
 What it is:
 
@@ -123,10 +91,6 @@ What it does:
 
 ## 9. Hard-Block Rules
 
-Name:
-
-- `Hard-Block Rules`
-
 What it is:
 
 - the subset of policy that must never auto-pass
@@ -137,10 +101,6 @@ What it does:
 
 ## 10. Canonical Runtime File
 
-Name:
-
-- `Canonical Runtime File`
-
 What it is:
 
 - `index.mjs`
@@ -150,8 +110,6 @@ Why it matters:
 - this is the file docs, tests, and runtime behavior must all agree on
 
 ## Mental model
-
-The shortest useful mental model is:
 
 ```text
 Read/Search
