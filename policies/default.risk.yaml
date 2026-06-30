@@ -1,0 +1,106 @@
+version: 0.1.0
+principle: "Risk = Target x Environment"
+
+environments:
+  test:
+    risk_shift: 0
+  production:
+    risk_shift: 1
+
+risk_order:
+  - low
+  - medium
+  - high
+  - critical
+
+target_classes:
+  prose_content:
+    risk: low
+    match:
+      paths:
+        - "**/*.tex"
+        - "**/*.md"
+      exclude:
+        - "**/AGENTS.md"
+        - "**/agents.md"
+        - "**/tools.md"
+        - "**/openclaw.json"
+        - "**/hooks/**"
+
+  pmo_or_ticket_docs:
+    risk: medium
+    match:
+      paths:
+        - "**/pmo/**"
+        - "**/plane/**"
+        - "**/tickets/**"
+        - "**/README.md"
+
+  workspace_control:
+    risk: high
+    match:
+      paths:
+        - "**/AGENTS.md"
+        - "**/agents.md"
+        - "**/tools.md"
+        - "**/openclaw.json"
+        - "**/hooks/**"
+        - "**/mcp/**"
+        - "**/.policy/**"
+
+  infrastructure:
+    risk: high
+    match:
+      tools:
+        - "aws"
+        - "deploy"
+        - "terraform"
+        - "kubectl"
+        - "docker"
+
+  folder_create:
+    risk: medium
+    match:
+      operations:
+        - "mkdir"
+        - "create_folder"
+
+  folder_delete:
+    risk: high
+    match:
+      operations:
+        - "rmdir"
+        - "rm_dir"
+        - "delete_folder"
+        - "rm -r"
+        - "rm -rf"
+
+  shell:
+    risk: medium
+    match:
+      tools:
+        - "shell"
+        - "bash"
+        - "exec"
+
+  plane_change:
+    risk: medium
+    match:
+      tools:
+        - "plane"
+        - "update_issue"
+        - "close_issue"
+
+critical_overrides:
+  - name: production_recursive_delete
+    when:
+      environment: production
+      operation_contains:
+        - "rm -rf"
+        - "delete_folder"
+    risk: critical
+  - name: production_deploy
+    when:
+      environment: production
+      target_class: infrastructure
+    risk: critical
