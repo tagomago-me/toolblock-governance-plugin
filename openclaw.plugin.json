@@ -5,6 +5,11 @@
   "description": "OpenClaw plugin that routes guarded actions through risk, evidence, placement, lifecycle, and completion policies before execution.",
   "main": "index.mjs",
   "type": "module",
+  "contracts": {
+    "tools": [
+      "preflight_record_evidence"
+    ]
+  },
   "activation": {
     "onStartup": true
   },
