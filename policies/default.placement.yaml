@@ -1,0 +1,34 @@
+version: 0.1.0
+purpose: "Route generated or ingested artifacts to the correct tree before creation."
+
+routes:
+  agent_knowledge:
+    target: "knowledge/agents/"
+    index: "lcm_sqlite"
+
+  pdf:
+    target: "rag/files/"
+    index: "rag_table"
+
+  pmo_file:
+    target: "pmo/"
+    index: "udl"
+
+  plane_export:
+    target: "pmo/plane/"
+    index: "udl"
+
+  overleaf_file:
+    target: "writing/overleaf/"
+    index: "udl"
+
+requires_before_create_or_move:
+  - artifact_type
+  - target_route
+  - evidence_for_classification
+  - destination_path
+  - conflict_check
+
+rules:
+  - "No unclassified file creation."
+  - "No orphan files."
