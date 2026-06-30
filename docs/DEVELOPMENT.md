@@ -35,9 +35,10 @@ That hook:
 
 The plugin exposes:
 
-- `preflight.record_evidence`
+- `preflight_record_evidence` as an agent tool
+- `preflight.record_evidence` as a gateway method
 
-This is the current operational workaround. It lets an agent explicitly register evidence before a guarded mutation.
+This is the current operational workaround. It lets an agent explicitly register evidence before a guarded mutation without depending on `after_tool_call` telemetry.
 
 ### 3. Evidence Ledger
 
@@ -46,7 +47,7 @@ Evidence is stored synchronously in a local JSONL ledger.
 Its job is to:
 
 - write evidence before guarded mutation
-- retain evidence by `runId`
+- retain evidence by `runId`, then fall back to `sessionId`, then `sessionKey`
 - make that evidence available during `before_tool_call`
 
 ### 4. Policy Bundle
@@ -98,8 +99,10 @@ This repository preserves the validated workaround state that came out of:
 In practice that means:
 
 - `index.mjs` is the runtime source file
-- the runtime methods in docs are actually exposed
+- the runtime methods and the agent tool in docs are actually exposed
 - the missing-ledger bypass is fixed
+- the agent-visible evidence tool is present
+- session-aware evidence matching covers the runtime gap where tool execution does not expose `runId`
 - agent scoping is available through `onlyAgents`
 - only the canonical validated tests are carried forward
 
